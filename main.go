@@ -17,10 +17,10 @@ func main() {
 	os.Exit(0)
 }
 
-type Highlight struct {
-	Book   string
-	Author string
-	Text   string
+type Book struct {
+	Title      string
+	Author     string
+	Highlights []string
 }
 
 func run() error {
@@ -35,7 +35,7 @@ func run() error {
 	}
 	defer f.Close()
 
-	highlights := make([]Highlight, 0)
+	highlights := make(map[string]*Book, 0)
 
 	lines := make([]string, 0)
 
@@ -48,44 +48,56 @@ func run() error {
 		if line == "==========" {
 			parsedHighlights++
 
-			book, author := parseBookAuthor(lines[0])
-			if bookTitle != "" && book != bookTitle {
+			title, author := parseTitleAuthor(lines[0])
+			if bookTitle != "" && title != bookTitle {
 				lines = make([]string, 0)
 				continue
 			}
 
-			h := Highlight{
-				Book:   book,
-				Author: author,
-				Text:   lines[3],
+			bk, ok := highlights[title]
+			if !ok {
+				bk = &Book{
+					Title:      title,
+					Author:     author,
+					Highlights: make([]string, 0),
+				}
+				highlights[title] = bk
 			}
 
-			highlights = append(highlights, h)
+			bk.Highlights = append(bk.Highlights, lines[3])
 			lines = make([]string, 0)
+
 		} else {
 			lines = append(lines, line)
 		}
 	}
 
-	fmt.Printf("parsed %d highlights\n", parsedHighlights)
+	fmt.Printf("parsed %d highlights\n\n", parsedHighlights)
 
 	if len(highlights) == 0 {
 		return errors.New("no highlights found for given book")
 	}
 
-	outFile, err := os.OpenFile(bookTitle+".txt", os.O_RDWR|os.O_CREATE, 0755)
+	var filename string
+	if bookTitle == "" {
+		filename = "highlights.txt"
+	} else {
+		filename = bookTitle + ".txt"
+	}
+	outFile, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}
 	defer outFile.Close()
 
-	fmt.Printf("writing %d highlights\n", len(highlights))
+	for _, bk := range highlights {
+		fmt.Printf("+ %s (%d highlights)\n", bk.Title, len(bk.Highlights))
 
-	outFile.Write([]byte(fmt.Sprintf("# %s\n", highlights[0].Book)))
-	outFile.Write([]byte(fmt.Sprintf("## %s\n\n", highlights[0].Author)))
-
-	for _, h := range highlights {
-		outFile.Write([]byte(fmt.Sprintf("* %s\n", h.Text)))
+		outFile.Write([]byte(fmt.Sprintf("# %s\n", bk.Title)))
+		outFile.Write([]byte(fmt.Sprintf("## %s\n\n", bk.Author)))
+		for _, h := range bk.Highlights {
+			outFile.Write([]byte(fmt.Sprintf("* %s\n", h)))
+		}
 	}
 
 	fmt.Println("done")
@@ -93,7 +105,7 @@ func run() error {
 	return nil
 }
 
-func parseBookAuthor(s string) (book, author string) {
+func parseTitleAuthor(s string) (book, author string) {
 	pattern := regexp.MustCompile(`^(?P<book>.*) \((?P<author>.*)\)`)
 	match := pattern.FindStringSubmatch(s)
 	return match[1], match[2]
