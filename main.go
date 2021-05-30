@@ -5,12 +5,28 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"regexp"
+	"strings"
 )
 
 func main() {
-	if err := run(); err != nil {
+	var in, bookTitle string
+	var isWebClipping bool
+	flag.StringVar(&bookTitle, "book", "", "filter by book title")
+	flag.StringVar(&in, "in", "", "path to clippings file")
+	flag.BoolVar(&isWebClipping, "web", false, "set true if the file is from the kindle web highlights")
+	flag.Parse()
+
+	var err error
+	if isWebClipping {
+		err = parseWebClippings(in, bookTitle)
+	} else {
+		err = parseClippingsFile(in, bookTitle)
+	}
+
+	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
@@ -23,11 +39,43 @@ type Book struct {
 	Highlights []string
 }
 
-func run() error {
-	var in, bookTitle string
-	flag.StringVar(&in, "in", "", "path to clippings file")
-	flag.StringVar(&bookTitle, "book", "", "filter by book title")
-	flag.Parse()
+func parseWebClippings(in, bookTitle string) error {
+	f, err := os.OpenFile(in, os.O_RDONLY, 0755)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	var parsedHighlights int
+
+	out, err := os.OpenFile(bookTitle+"_highlights.txt", os.O_CREATE|os.O_APPEND|os.O_RDWR, 0666)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+
+		if strings.Contains(line, "Yellow highlight | Location:") {
+			continue
+		}
+
+		parsedHighlights++
+
+		line = line + "\n"
+		_, err := out.Write([]byte(line))
+		if err != nil {
+			return err
+		}
+	}
+
+	log.Printf("-> processed %d highlights\n", parsedHighlights)
+	return nil
+}
+
+func parseClippingsFile(in, bookTitle string) error {
 
 	f, err := os.Open(in)
 	if err != nil {
